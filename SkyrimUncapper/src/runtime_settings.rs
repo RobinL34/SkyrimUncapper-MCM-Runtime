@@ -740,6 +740,144 @@ impl RuntimeAttributeTable {
 
 
 // ---------------------------------------------------------
+// Runtime Legendary settings
+// ---------------------------------------------------------
+
+#[derive(Copy, Clone)]
+pub struct LegendaryRuntimeValues {
+    pub keep_skill_level: bool,
+    pub hide_button: bool,
+    pub skill_level_enable: u32,
+    pub skill_level_after: u32,
+}
+
+
+struct RuntimeLegendarySlot {
+    packed: AtomicU32,
+}
+
+
+impl RuntimeLegendarySlot {
+    const KEEP_SKILL_LEVEL_BIT: u32 = 1 << 0;
+    const HIDE_BUTTON_BIT: u32 = 1 << 1;
+    const SKILL_LEVEL_ENABLE_SHIFT: u32 = 2;
+    const SKILL_LEVEL_AFTER_SHIFT: u32 = 11;
+    const SKILL_LEVEL_MASK: u32 = 0x1FF;
+
+    const fn new() -> Self {
+        Self {
+            packed: AtomicU32::new(0),
+        }
+    }
+
+
+    fn store(
+        &self,
+        values: LegendaryRuntimeValues,
+    ) {
+        let mut packed =
+            (values.skill_level_enable << Self::SKILL_LEVEL_ENABLE_SHIFT) |
+            (values.skill_level_after << Self::SKILL_LEVEL_AFTER_SHIFT);
+
+        if values.keep_skill_level {
+            packed |= Self::KEEP_SKILL_LEVEL_BIT;
+        }
+
+        if values.hide_button {
+            packed |= Self::HIDE_BUTTON_BIT;
+        }
+
+        self.packed.store(packed, Ordering::Relaxed);
+    }
+
+
+    fn load(&self) -> LegendaryRuntimeValues {
+        let packed = self.packed.load(Ordering::Relaxed);
+
+        LegendaryRuntimeValues {
+            keep_skill_level:
+                packed & Self::KEEP_SKILL_LEVEL_BIT != 0,
+            hide_button:
+                packed & Self::HIDE_BUTTON_BIT != 0,
+            skill_level_enable:
+                (packed >> Self::SKILL_LEVEL_ENABLE_SHIFT) & Self::SKILL_LEVEL_MASK,
+            skill_level_after:
+                (packed >> Self::SKILL_LEVEL_AFTER_SHIFT) & Self::SKILL_LEVEL_MASK,
+        }
+    }
+}
+
+
+struct RuntimeLegendarySettings {
+    active_slot: AtomicU32,
+    slots: [RuntimeLegendarySlot; 2],
+}
+
+
+impl RuntimeLegendarySettings {
+    const fn new() -> Self {
+        Self {
+            active_slot: AtomicU32::new(NO_OVERRIDE),
+            slots: [const { RuntimeLegendarySlot::new() }; 2],
+        }
+    }
+
+
+    fn clear(&self) {
+        self.active_slot.store(
+            NO_OVERRIDE,
+            Ordering::Release,
+        );
+    }
+
+
+    fn validate(
+        values: LegendaryRuntimeValues,
+    ) -> bool {
+        if values.skill_level_enable == 0 ||
+            values.skill_level_enable > 500 ||
+            values.skill_level_after > 500
+        {
+            return false;
+        }
+
+        values.keep_skill_level ||
+            values.skill_level_after == 0 ||
+            values.skill_level_after < values.skill_level_enable
+    }
+
+
+    fn set(
+        &self,
+        values: LegendaryRuntimeValues,
+    ) -> bool {
+        if !Self::validate(values) {
+            return false;
+        }
+
+        let active_slot = self.active_slot.load(Ordering::Acquire);
+        let next_slot = if active_slot == 0 { 1 } else { 0 };
+
+        self.slots[next_slot as usize].store(values);
+        self.active_slot.store(next_slot, Ordering::Release);
+
+        true
+    }
+
+
+    fn get(&self) -> Option<LegendaryRuntimeValues> {
+        let active_slot = self.active_slot.load(Ordering::Acquire);
+
+        match active_slot {
+            0 | 1 => Some(self.slots[active_slot as usize].load()),
+            NO_OVERRIDE => None,
+            _ => None,
+        }
+    }
+}
+
+
+// ---------------------------------------------------------
 // Skill / Formula Cap overrides
 // ---------------------------------------------------------
 
@@ -842,6 +980,15 @@ static ATTRIBUTE_LEVEL_UP_TABLES:
     [RuntimeAttributeTable; ATTRIBUTE_TABLE_COUNT] =
     [const { RuntimeAttributeTable::new() };
         ATTRIBUTE_TABLE_COUNT];
+
+
+// ---------------------------------------------------------
+// Legendary settings override
+// ---------------------------------------------------------
+
+static LEGENDARY_SETTINGS:
+    RuntimeLegendarySettings =
+    RuntimeLegendarySettings::new();
 
 
 // ---------------------------------------------------------
@@ -1337,6 +1484,34 @@ pub fn get_attribute_override(
 
 
 // ---------------------------------------------------------
+// Legendary settings
+// ---------------------------------------------------------
+
+pub fn set_legendary_override(
+    keep_skill_level: bool,
+    hide_button: bool,
+    skill_level_enable: u32,
+    skill_level_after: u32,
+) -> bool {
+    LEGENDARY_SETTINGS.set(
+        LegendaryRuntimeValues {
+            keep_skill_level,
+            hide_button,
+            skill_level_enable,
+            skill_level_after,
+        }
+    )
+}
+
+
+pub fn get_legendary_override()
+    -> Option<LegendaryRuntimeValues>
+{
+    LEGENDARY_SETTINGS.get()
+}
+
+
+// ---------------------------------------------------------
 // Reset
 // ---------------------------------------------------------
 
@@ -1409,4 +1584,6 @@ LEVEL_EXP_BY_CHARACTER_LEVEL[index]
         ATTRIBUTE_LEVEL_UP_TABLES[index]
             .clear();
     }
+
+    LEGENDARY_SETTINGS.clear();
 }

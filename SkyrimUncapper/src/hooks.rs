@@ -28,6 +28,8 @@ use crate::runtime_settings::{
     get_level_exp_character_level_override,
     get_perks_at_level_up_cumulative_delta,
     get_attribute_override,
+    get_legendary_override,
+    LegendaryRuntimeValues,
     ATTRIBUTE_TABLE_HEALTH_AT_LEVEL_UP,
     ATTRIBUTE_TABLE_HEALTH_AT_MAGICKA_LEVEL_UP,
     ATTRIBUTE_TABLE_HEALTH_AT_STAMINA_LEVEL_UP,
@@ -1303,21 +1305,38 @@ extern "system" fn improve_attribute_when_level_up_hook(
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/// Gets the active Legendary settings, falling back to the INI configuration.
+fn get_legendary_settings() -> LegendaryRuntimeValues {
+    get_legendary_override()
+        .unwrap_or_else(|| LegendaryRuntimeValues {
+            keep_skill_level:
+                SETTINGS.legendary.keep_skill_level.get(),
+            hide_button:
+                SETTINGS.legendary.hide_button.get(),
+            skill_level_enable:
+                SETTINGS.legendary.skill_level_en.get(),
+            skill_level_after:
+                SETTINGS.legendary.skill_level_after.get(),
+        })
+}
+
+
 /// Determines what level a skill should take on after being legendary'd.
 extern "system" fn legendary_reset_skill_level_hook(
     base_level: f32
 ) -> f32 {
     assert!(SETTINGS.general.legendary_en.get());
     assert!(base_level >= 0.0);
+    let legendary = get_legendary_settings();
     let base_val = *LEGENDARY_SKILL_RESET_VALUE.get();
 
     // Check if legendarying should reset the level at all.
-    if SETTINGS.legendary.keep_skill_level.get() {
+    if legendary.keep_skill_level {
         return base_level;
     }
 
     // 0 in the conf file means we should use the default value.
-    let mut reset_level = SETTINGS.legendary.skill_level_after.get() as f32;
+    let mut reset_level = legendary.skill_level_after as f32;
     if reset_level == 0.0 {
         reset_level = base_val;
     }
@@ -1338,8 +1357,9 @@ extern "system" fn check_condition_for_legendary_skill_hook(
 ) -> f32 {
     assert!(SETTINGS.general.legendary_en.get());
     let skill = ActorAttribute::from_raw_skill(skill).unwrap();
+    let legendary = get_legendary_settings();
 
-    if PlayerCharacter::get_base(skill) as u32 >= SETTINGS.legendary.skill_level_en.get() {
+    if PlayerCharacter::get_base(skill) as u32 >= legendary.skill_level_enable {
         BASE_LEGENDARY_THRESHOLD
     } else {
         BASE_LEGENDARY_THRESHOLD - 1.0
@@ -1358,9 +1378,10 @@ extern "system" fn hide_legendary_button_hook(
 ) -> f32 {
     assert!(SETTINGS.general.legendary_en.get());
     let skill = ActorAttribute::from_raw_skill(skill).unwrap();
+    let legendary = get_legendary_settings();
 
-    if (PlayerCharacter::get_base(skill) as u32 >= SETTINGS.legendary.skill_level_en.get())
-            && !SETTINGS.legendary.hide_button.get() {
+    if (PlayerCharacter::get_base(skill) as u32 >= legendary.skill_level_enable)
+            && !legendary.hide_button {
         BASE_LEGENDARY_THRESHOLD
     } else {
         BASE_LEGENDARY_THRESHOLD - 1.0
@@ -1379,12 +1400,13 @@ extern "system" fn clear_legendary_button_hook(
     skill: c_int
 ) -> f32 {
     assert!(SETTINGS.general.legendary_en.get());
+    let legendary = get_legendary_settings();
 
     if let Ok(skill) = ActorAttribute::from_raw_skill(skill) {
         let level = PlayerCharacter::get_base(skill);
         let game_vis = level >= BASE_LEGENDARY_THRESHOLD;
-        let mod_vis = !SETTINGS.legendary.hide_button.get()
-            && (PlayerCharacter::get_base(skill) as u32 >= SETTINGS.legendary.skill_level_en.get());
+        let mod_vis = !legendary.hide_button
+            && (PlayerCharacter::get_base(skill) as u32 >= legendary.skill_level_enable);
 
         if game_vis == mod_vis {
             level

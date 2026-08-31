@@ -1497,3 +1497,86 @@ pub extern "system" fn Uncapper_GetIniUseAttributesAtLevelUp() -> u32 {
         0
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Legendary Settings API
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#[no_mangle]
+pub extern "system" fn Uncapper_GetIniUseLegendarySettings() -> u32 {
+    if settings::SETTINGS
+        .general
+        .legendary_en
+        .get()
+    {
+        1
+    } else {
+        0
+    }
+}
+
+
+#[no_mangle]
+pub extern "system" fn Uncapper_GetIniLegendaryKeepSkillLevel() -> u32 {
+    if settings::SETTINGS
+        .legendary
+        .keep_skill_level
+        .get()
+    {
+        1
+    } else {
+        0
+    }
+}
+
+
+#[no_mangle]
+pub extern "system" fn Uncapper_GetIniHideLegendaryButton() -> u32 {
+    if settings::SETTINGS
+        .legendary
+        .hide_button
+        .get()
+    {
+        1
+    } else {
+        0
+    }
+}
+
+
+#[no_mangle]
+pub extern "system" fn Uncapper_GetIniSkillLevelEnableLegendary() -> u32 {
+    settings::SETTINGS
+        .legendary
+        .skill_level_en
+        .get()
+}
+
+
+#[no_mangle]
+pub extern "system" fn Uncapper_GetIniSkillLevelAfterLegendary() -> u32 {
+    settings::SETTINGS
+        .legendary
+        .skill_level_after
+        .get()
+}
+
+
+#[no_mangle]
+pub extern "system" fn Uncapper_SetLegendaryOverrides(
+    keep_skill_level: u32,
+    hide_button: u32,
+    skill_level_enable: u32,
+    skill_level_after: u32,
+) -> bool {
+    if keep_skill_level > 1 || hide_button > 1 {
+        return false;
+    }
+
+    runtime_settings::set_legendary_override(
+        keep_skill_level != 0,
+        hide_button != 0,
+        skill_level_enable,
+        skill_level_after,
+    )
+}
