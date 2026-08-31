@@ -27,6 +27,19 @@ use crate::runtime_settings::{
     get_level_exp_skill_level_override,
     get_level_exp_character_level_override,
     get_perks_at_level_up_cumulative_delta,
+    get_attribute_override,
+    ATTRIBUTE_TABLE_HEALTH_AT_LEVEL_UP,
+    ATTRIBUTE_TABLE_HEALTH_AT_MAGICKA_LEVEL_UP,
+    ATTRIBUTE_TABLE_HEALTH_AT_STAMINA_LEVEL_UP,
+    ATTRIBUTE_TABLE_MAGICKA_AT_HEALTH_LEVEL_UP,
+    ATTRIBUTE_TABLE_MAGICKA_AT_LEVEL_UP,
+    ATTRIBUTE_TABLE_MAGICKA_AT_STAMINA_LEVEL_UP,
+    ATTRIBUTE_TABLE_STAMINA_AT_HEALTH_LEVEL_UP,
+    ATTRIBUTE_TABLE_STAMINA_AT_MAGICKA_LEVEL_UP,
+    ATTRIBUTE_TABLE_STAMINA_AT_LEVEL_UP,
+    ATTRIBUTE_TABLE_CARRY_WEIGHT_AT_HEALTH_LEVEL_UP,
+    ATTRIBUTE_TABLE_CARRY_WEIGHT_AT_MAGICKA_LEVEL_UP,
+    ATTRIBUTE_TABLE_CARRY_WEIGHT_AT_STAMINA_LEVEL_UP,
 };
 use crate::skyrim::*;
 
@@ -1202,22 +1215,82 @@ extern "system" fn improve_attribute_when_level_up_hook(
     let player_level = PlayerCharacter::get_level();
     let (hp, mp, sp, cw) = match ActorAttribute::from_raw(choice).unwrap() {
         ActorAttribute::Health => (
-            SETTINGS.hp_at_lvl_up.get_nearest(player_level) as f32,
-            SETTINGS.mp_at_hp_lvl_up.get_nearest(player_level) as f32,
-            SETTINGS.sp_at_hp_lvl_up.get_nearest(player_level) as f32,
-            SETTINGS.cw_at_hp_lvl_up.get_nearest(player_level) as f32
+            get_attribute_override(
+                ATTRIBUTE_TABLE_HEALTH_AT_LEVEL_UP,
+                player_level,
+            ).unwrap_or_else(|| {
+                SETTINGS.hp_at_lvl_up.get_nearest(player_level)
+            }) as f32,
+            get_attribute_override(
+                ATTRIBUTE_TABLE_MAGICKA_AT_HEALTH_LEVEL_UP,
+                player_level,
+            ).unwrap_or_else(|| {
+                SETTINGS.mp_at_hp_lvl_up.get_nearest(player_level)
+            }) as f32,
+            get_attribute_override(
+                ATTRIBUTE_TABLE_STAMINA_AT_HEALTH_LEVEL_UP,
+                player_level,
+            ).unwrap_or_else(|| {
+                SETTINGS.sp_at_hp_lvl_up.get_nearest(player_level)
+            }) as f32,
+            get_attribute_override(
+                ATTRIBUTE_TABLE_CARRY_WEIGHT_AT_HEALTH_LEVEL_UP,
+                player_level,
+            ).unwrap_or_else(|| {
+                SETTINGS.cw_at_hp_lvl_up.get_nearest(player_level)
+            }) as f32
         ),
         ActorAttribute::Magicka => (
-            SETTINGS.hp_at_mp_lvl_up.get_nearest(player_level) as f32,
-            SETTINGS.mp_at_lvl_up.get_nearest(player_level) as f32,
-            SETTINGS.sp_at_mp_lvl_up.get_nearest(player_level) as f32,
-            SETTINGS.cw_at_mp_lvl_up.get_nearest(player_level) as f32
+            get_attribute_override(
+                ATTRIBUTE_TABLE_HEALTH_AT_MAGICKA_LEVEL_UP,
+                player_level,
+            ).unwrap_or_else(|| {
+                SETTINGS.hp_at_mp_lvl_up.get_nearest(player_level)
+            }) as f32,
+            get_attribute_override(
+                ATTRIBUTE_TABLE_MAGICKA_AT_LEVEL_UP,
+                player_level,
+            ).unwrap_or_else(|| {
+                SETTINGS.mp_at_lvl_up.get_nearest(player_level)
+            }) as f32,
+            get_attribute_override(
+                ATTRIBUTE_TABLE_STAMINA_AT_MAGICKA_LEVEL_UP,
+                player_level,
+            ).unwrap_or_else(|| {
+                SETTINGS.sp_at_mp_lvl_up.get_nearest(player_level)
+            }) as f32,
+            get_attribute_override(
+                ATTRIBUTE_TABLE_CARRY_WEIGHT_AT_MAGICKA_LEVEL_UP,
+                player_level,
+            ).unwrap_or_else(|| {
+                SETTINGS.cw_at_mp_lvl_up.get_nearest(player_level)
+            }) as f32
         ),
         ActorAttribute::Stamina => (
-            SETTINGS.hp_at_sp_lvl_up.get_nearest(player_level) as f32,
-            SETTINGS.mp_at_sp_lvl_up.get_nearest(player_level) as f32,
-            SETTINGS.sp_at_lvl_up.get_nearest(player_level) as f32,
-            SETTINGS.cw_at_sp_lvl_up.get_nearest(player_level) as f32
+            get_attribute_override(
+                ATTRIBUTE_TABLE_HEALTH_AT_STAMINA_LEVEL_UP,
+                player_level,
+            ).unwrap_or_else(|| {
+                SETTINGS.hp_at_sp_lvl_up.get_nearest(player_level)
+            }) as f32,
+            get_attribute_override(
+                ATTRIBUTE_TABLE_MAGICKA_AT_STAMINA_LEVEL_UP,
+                player_level,
+            ).unwrap_or_else(|| {
+                SETTINGS.mp_at_sp_lvl_up.get_nearest(player_level)
+            }) as f32,
+            get_attribute_override(
+                ATTRIBUTE_TABLE_STAMINA_AT_LEVEL_UP,
+                player_level,
+            ).unwrap_or_else(|| {
+                SETTINGS.sp_at_lvl_up.get_nearest(player_level)
+            }) as f32,
+            get_attribute_override(
+                ATTRIBUTE_TABLE_CARRY_WEIGHT_AT_STAMINA_LEVEL_UP,
+                player_level,
+            ).unwrap_or_else(|| {
+                SETTINGS.cw_at_sp_lvl_up.get_nearest(player_level)
+            }) as f32
         ),
         _ => panic!("Cannot get the attribute level up with an invalid choice.")
     };

@@ -1319,3 +1319,181 @@ pub extern "system" fn Uncapper_CommitPerksAtLevelUpOverride(
         count,
     )
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Attributes at Level Up API
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+fn ini_attribute_table(
+    table_index: usize,
+) -> Option<&'static settings::LeveledIniSection<u32>> {
+    match table_index {
+        runtime_settings::ATTRIBUTE_TABLE_HEALTH_AT_LEVEL_UP =>
+            Some(&settings::SETTINGS.hp_at_lvl_up),
+        runtime_settings::ATTRIBUTE_TABLE_HEALTH_AT_MAGICKA_LEVEL_UP =>
+            Some(&settings::SETTINGS.hp_at_mp_lvl_up),
+        runtime_settings::ATTRIBUTE_TABLE_HEALTH_AT_STAMINA_LEVEL_UP =>
+            Some(&settings::SETTINGS.hp_at_sp_lvl_up),
+        runtime_settings::ATTRIBUTE_TABLE_MAGICKA_AT_HEALTH_LEVEL_UP =>
+            Some(&settings::SETTINGS.mp_at_hp_lvl_up),
+        runtime_settings::ATTRIBUTE_TABLE_MAGICKA_AT_LEVEL_UP =>
+            Some(&settings::SETTINGS.mp_at_lvl_up),
+        runtime_settings::ATTRIBUTE_TABLE_MAGICKA_AT_STAMINA_LEVEL_UP =>
+            Some(&settings::SETTINGS.mp_at_sp_lvl_up),
+        runtime_settings::ATTRIBUTE_TABLE_STAMINA_AT_HEALTH_LEVEL_UP =>
+            Some(&settings::SETTINGS.sp_at_hp_lvl_up),
+        runtime_settings::ATTRIBUTE_TABLE_STAMINA_AT_MAGICKA_LEVEL_UP =>
+            Some(&settings::SETTINGS.sp_at_mp_lvl_up),
+        runtime_settings::ATTRIBUTE_TABLE_STAMINA_AT_LEVEL_UP =>
+            Some(&settings::SETTINGS.sp_at_lvl_up),
+        runtime_settings::ATTRIBUTE_TABLE_CARRY_WEIGHT_AT_HEALTH_LEVEL_UP =>
+            Some(&settings::SETTINGS.cw_at_hp_lvl_up),
+        runtime_settings::ATTRIBUTE_TABLE_CARRY_WEIGHT_AT_MAGICKA_LEVEL_UP =>
+            Some(&settings::SETTINGS.cw_at_mp_lvl_up),
+        runtime_settings::ATTRIBUTE_TABLE_CARRY_WEIGHT_AT_STAMINA_LEVEL_UP =>
+            Some(&settings::SETTINGS.cw_at_sp_lvl_up),
+        _ => None,
+    }
+}
+
+
+#[no_mangle]
+pub extern "system" fn Uncapper_GetIniAttributeBreakpointCount(
+    table_index: u32,
+) -> u32 {
+    let Some(table) =
+        ini_attribute_table(table_index as usize)
+    else {
+        return u32::MAX;
+    };
+
+    table.len() as u32
+}
+
+
+#[no_mangle]
+pub extern "system" fn Uncapper_GetIniAttributeBreakpointLevel(
+    table_index: u32,
+    index: u32,
+) -> u32 {
+    let Some(table) =
+        ini_attribute_table(table_index as usize)
+    else {
+        return u32::MAX;
+    };
+
+    let Some((level, _)) =
+        table.get_at(index as usize)
+    else {
+        return u32::MAX;
+    };
+
+    level
+}
+
+
+#[no_mangle]
+pub extern "system" fn Uncapper_GetIniAttributeBreakpointValue(
+    table_index: u32,
+    index: u32,
+) -> u32 {
+    let Some(table) =
+        ini_attribute_table(table_index as usize)
+    else {
+        return u32::MAX;
+    };
+
+    let Some((_, value)) =
+        table.get_at(index as usize)
+    else {
+        return u32::MAX;
+    };
+
+    value
+}
+
+
+#[no_mangle]
+pub extern "system" fn Uncapper_BeginAttributeOverride(
+    table_index: u32,
+) -> bool {
+    let table_index = table_index as usize;
+
+    if table_index >= runtime_settings::ATTRIBUTE_TABLE_COUNT {
+        return false;
+    }
+
+    runtime_settings::begin_attribute_override(
+        table_index,
+    )
+}
+
+
+#[no_mangle]
+pub extern "system" fn Uncapper_SetAttributeBreakpoint(
+    table_index: u32,
+    index: u32,
+    level: u32,
+    value: u32,
+) -> bool {
+    let table_index = table_index as usize;
+    let index = index as usize;
+
+    if table_index >= runtime_settings::ATTRIBUTE_TABLE_COUNT {
+        return false;
+    }
+
+    if index >= runtime_settings::MAX_ATTRIBUTE_BREAKPOINTS {
+        return false;
+    }
+
+    if level > MAX_BREAKPOINT_LEVEL {
+        return false;
+    }
+
+    runtime_settings::set_attribute_entry(
+        table_index,
+        index,
+        level,
+        value,
+    )
+}
+
+
+#[no_mangle]
+pub extern "system" fn Uncapper_CommitAttributeOverride(
+    table_index: u32,
+    count: u32,
+) -> bool {
+    let table_index = table_index as usize;
+    let count = count as usize;
+
+    if table_index >= runtime_settings::ATTRIBUTE_TABLE_COUNT {
+        return false;
+    }
+
+    if count == 0 ||
+        count > runtime_settings::MAX_ATTRIBUTE_BREAKPOINTS
+    {
+        return false;
+    }
+
+    runtime_settings::commit_attribute_override(
+        table_index,
+        count,
+    )
+}
+
+
+#[no_mangle]
+pub extern "system" fn Uncapper_GetIniUseAttributesAtLevelUp() -> u32 {
+    if settings::SETTINGS
+        .general
+        .attr_points_en
+        .get()
+    {
+        1
+    } else {
+        0
+    }
+}

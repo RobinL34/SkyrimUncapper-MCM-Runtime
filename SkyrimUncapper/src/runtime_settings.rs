@@ -17,6 +17,21 @@ const NO_OVERRIDE: u32 = u32::MAX;
 pub const MAX_SKILL_EXP_BREAKPOINTS: usize = 32;
 pub const MAX_LEVEL_EXP_BREAKPOINTS: usize = 32;
 pub const MAX_PERKS_AT_LEVEL_UP_BREAKPOINTS: usize = 32;
+pub const ATTRIBUTE_TABLE_COUNT: usize = 12;
+pub const MAX_ATTRIBUTE_BREAKPOINTS: usize = 32;
+
+pub const ATTRIBUTE_TABLE_HEALTH_AT_LEVEL_UP: usize = 0;
+pub const ATTRIBUTE_TABLE_HEALTH_AT_MAGICKA_LEVEL_UP: usize = 1;
+pub const ATTRIBUTE_TABLE_HEALTH_AT_STAMINA_LEVEL_UP: usize = 2;
+pub const ATTRIBUTE_TABLE_MAGICKA_AT_HEALTH_LEVEL_UP: usize = 3;
+pub const ATTRIBUTE_TABLE_MAGICKA_AT_LEVEL_UP: usize = 4;
+pub const ATTRIBUTE_TABLE_MAGICKA_AT_STAMINA_LEVEL_UP: usize = 5;
+pub const ATTRIBUTE_TABLE_STAMINA_AT_HEALTH_LEVEL_UP: usize = 6;
+pub const ATTRIBUTE_TABLE_STAMINA_AT_MAGICKA_LEVEL_UP: usize = 7;
+pub const ATTRIBUTE_TABLE_STAMINA_AT_LEVEL_UP: usize = 8;
+pub const ATTRIBUTE_TABLE_CARRY_WEIGHT_AT_HEALTH_LEVEL_UP: usize = 9;
+pub const ATTRIBUTE_TABLE_CARRY_WEIGHT_AT_MAGICKA_LEVEL_UP: usize = 10;
+pub const ATTRIBUTE_TABLE_CARRY_WEIGHT_AT_STAMINA_LEVEL_UP: usize = 11;
 
 
 // ---------------------------------------------------------
@@ -564,6 +579,167 @@ impl RuntimePerksAtLevelUpTable {
 
 
 // ---------------------------------------------------------
+// Runtime table for attribute gains at level up.
+// ---------------------------------------------------------
+
+struct RuntimeAttributeTable {
+    count: AtomicU32,
+
+    levels:
+        [AtomicU32; MAX_ATTRIBUTE_BREAKPOINTS],
+
+    values:
+        [AtomicU32; MAX_ATTRIBUTE_BREAKPOINTS],
+}
+
+
+impl RuntimeAttributeTable {
+    const fn new() -> Self {
+        Self {
+            count:
+                AtomicU32::new(NO_OVERRIDE),
+
+            levels:
+                [const { AtomicU32::new(0) };
+                    MAX_ATTRIBUTE_BREAKPOINTS],
+
+            values:
+                [const { AtomicU32::new(0) };
+                    MAX_ATTRIBUTE_BREAKPOINTS],
+        }
+    }
+
+
+    fn clear(&self) {
+        self.count.store(
+            NO_OVERRIDE,
+            Ordering::Release,
+        );
+    }
+
+
+    fn begin_update(&self) {
+        self.count.store(
+            NO_OVERRIDE,
+            Ordering::Release,
+        );
+    }
+
+
+    fn set_entry(
+        &self,
+        index: usize,
+        level: u32,
+        value: u32,
+    ) -> bool {
+        if index >= MAX_ATTRIBUTE_BREAKPOINTS ||
+            level > 500
+        {
+            return false;
+        }
+
+        self.levels[index].store(
+            level,
+            Ordering::Relaxed,
+        );
+
+        self.values[index].store(
+            value,
+            Ordering::Relaxed,
+        );
+
+        true
+    }
+
+
+    fn commit(
+        &self,
+        count: usize,
+    ) -> bool {
+        if count == 0 ||
+            count > MAX_ATTRIBUTE_BREAKPOINTS
+        {
+            return false;
+        }
+
+        let mut previous_level = 0u32;
+
+        for index in 0..count {
+            let level =
+                self.levels[index]
+                    .load(Ordering::Relaxed);
+
+            if level > 500 {
+                return false;
+            }
+
+            if index == 0 && level != 0 {
+                return false;
+            }
+
+            if index > 0 &&
+                level <= previous_level
+            {
+                return false;
+            }
+
+            previous_level = level;
+        }
+
+        self.count.store(
+            count as u32,
+            Ordering::Release,
+        );
+
+        true
+    }
+
+
+    fn get_nearest(
+        &self,
+        level: u32,
+    ) -> Option<u32> {
+        let count =
+            self.count.load(Ordering::Acquire);
+
+        if count == NO_OVERRIDE {
+            return None;
+        }
+
+        let count = count as usize;
+
+        if count == 0 ||
+            count > MAX_ATTRIBUTE_BREAKPOINTS
+        {
+            return None;
+        }
+
+        let mut selected_index = 0usize;
+        let mut index = 0usize;
+
+        while index < count {
+            let breakpoint_level =
+                self.levels[index]
+                    .load(Ordering::Relaxed);
+
+            if breakpoint_level <= level {
+                selected_index = index;
+            } else {
+                break;
+            }
+
+            index += 1;
+        }
+
+        Some(
+            self.values[selected_index]
+                .load(Ordering::Relaxed)
+        )
+    }
+}
+
+
+// ---------------------------------------------------------
 // Skill / Formula Cap overrides
 // ---------------------------------------------------------
 
@@ -656,6 +832,16 @@ static LEVEL_EXP_BY_CHARACTER_LEVEL:
 static PERKS_AT_LEVEL_UP:
     RuntimePerksAtLevelUpTable =
     RuntimePerksAtLevelUpTable::new();
+
+
+// ---------------------------------------------------------
+// Attribute gains at level up overrides
+// ---------------------------------------------------------
+
+static ATTRIBUTE_LEVEL_UP_TABLES:
+    [RuntimeAttributeTable; ATTRIBUTE_TABLE_COUNT] =
+    [const { RuntimeAttributeTable::new() };
+        ATTRIBUTE_TABLE_COUNT];
 
 
 // ---------------------------------------------------------
@@ -1085,6 +1271,72 @@ pub fn get_perks_at_level_up_cumulative_delta(
 
 
 // ---------------------------------------------------------
+// Attribute gains at level up
+// ---------------------------------------------------------
+
+pub fn begin_attribute_override(
+    table_index: usize,
+) -> bool {
+    if table_index >= ATTRIBUTE_TABLE_COUNT {
+        return false;
+    }
+
+    ATTRIBUTE_LEVEL_UP_TABLES[table_index]
+        .begin_update();
+
+    true
+}
+
+
+pub fn set_attribute_entry(
+    table_index: usize,
+    index: usize,
+    level: u32,
+    value: u32,
+) -> bool {
+    if table_index >= ATTRIBUTE_TABLE_COUNT ||
+        index >= MAX_ATTRIBUTE_BREAKPOINTS ||
+        level > 500
+    {
+        return false;
+    }
+
+    ATTRIBUTE_LEVEL_UP_TABLES[table_index]
+        .set_entry(
+            index,
+            level,
+            value,
+        )
+}
+
+
+pub fn commit_attribute_override(
+    table_index: usize,
+    count: usize,
+) -> bool {
+    if table_index >= ATTRIBUTE_TABLE_COUNT {
+        return false;
+    }
+
+    ATTRIBUTE_LEVEL_UP_TABLES[table_index]
+        .commit(count)
+}
+
+
+pub fn get_attribute_override(
+    table_index: usize,
+    level: u32,
+) -> Option<u32> {
+    if table_index >= ATTRIBUTE_TABLE_COUNT {
+        return None;
+    }
+
+    ATTRIBUTE_LEVEL_UP_TABLES[table_index]
+        .get_nearest(level)
+}
+
+
+// ---------------------------------------------------------
 // Reset
 // ---------------------------------------------------------
 
@@ -1152,4 +1404,9 @@ LEVEL_EXP_BY_CHARACTER_LEVEL[index]
         );
 
     PERKS_AT_LEVEL_UP.clear();
+
+    for index in 0..ATTRIBUTE_TABLE_COUNT {
+        ATTRIBUTE_LEVEL_UP_TABLES[index]
+            .clear();
+    }
 }
