@@ -17,6 +17,17 @@ use libskyrim::patcher::{Descriptor, DescriptorObject, Hook, Register};
 use libskyrim::patcher::{GameLocation, GameRef, signature};
 
 use crate::settings::SETTINGS;
+use crate::runtime_settings::{
+    get_skill_cap_override,
+    get_formula_cap_override,
+    get_skill_exp_base_override,
+    get_skill_exp_skill_level_override,
+    get_skill_exp_character_level_override,
+    get_level_exp_base_override,
+    get_level_exp_skill_level_override,
+    get_level_exp_character_level_override,
+    get_perks_at_level_up_cumulative_delta,
+};
 use crate::skyrim::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -747,7 +758,15 @@ extern "system" fn get_skill_cap_hook(
     skill: c_int
 ) -> f32 {
     assert!(SETTINGS.general.skill_caps_en.get());
-    SETTINGS.skill_caps.get(ActorAttribute::from_raw_skill(skill).unwrap()).get() as f32
+
+    let skill = ActorAttribute::from_raw_skill(skill).unwrap();
+
+    let cap = get_skill_cap_override(skill.skill_slot())
+        .unwrap_or_else(|| {
+            SETTINGS.skill_caps.get(skill).get()
+        });
+
+    cap as f32
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -786,13 +805,44 @@ extern "system" fn calculate_charge_points_per_use_hook(
     let cost_base = *ENCHANTING_SKILL_COST_BASE.get();
     let cost_scale = *ENCHANTING_SKILL_COST_SCALE.get();
     let cost_mult = *ENCHANTING_SKILL_COST_MULT.get();
-    let cap = (SETTINGS.enchant.charge_cap.get() as f32).min(199.0).min(
-        SETTINGS.skill_formula_caps.get(ActorAttribute::Enchanting).get() as f32
-    );
-    let enchanting_level = cap.min(PlayerCharacter::get_current(ActorAttribute::Enchanting));
+    let charge_cap =
+        crate::runtime_settings::get_enchant_charge_cap_override()
+            .unwrap_or_else(|| {
+                SETTINGS.enchant.charge_cap.get()
+            });
 
-    let base = cost_mult * powf(base_points, cost_exponent);
-    if SETTINGS.enchant.use_linear_charge.get() {
+    let formula_cap =
+        get_formula_cap_override(
+            ActorAttribute::Enchanting.skill_slot()
+        )
+        .unwrap_or_else(|| {
+            SETTINGS
+                .skill_formula_caps
+                .get(ActorAttribute::Enchanting)
+                .get()
+        });
+
+    let cap = (charge_cap as f32)
+        .min(199.0)
+        .min(formula_cap as f32);
+
+    let enchanting_level =
+        cap.min(
+            PlayerCharacter::get_current(
+                ActorAttribute::Enchanting
+            )
+        );
+
+    let base =
+        cost_mult * powf(base_points, cost_exponent);
+
+    let use_linear_charge =
+        crate::runtime_settings::get_enchant_use_linear_charge_override()
+            .unwrap_or_else(|| {
+                SETTINGS.enchant.use_linear_charge.get()
+            });
+
+    if use_linear_charge {
         // Linearly scale between current min/max of charge points. Max scales with skills/perks,
         // so this isn't perfectly linear. It still smooths the EQ a lot, though.
         let max_level_scale = powf(cap * cost_base, cost_scale);
@@ -830,16 +880,28 @@ extern "system" fn player_avo_get_current_hook(
     }
 
     if let Ok(skill) = ActorAttribute::from_raw_skill(attr) {
-        let mut cap = SETTINGS.skill_formula_caps.get(skill).get() as f32;
+        let mut cap = get_formula_cap_override(skill.skill_slot())
+            .unwrap_or_else(|| {
+                SETTINGS.skill_formula_caps.get(skill).get()
+        }) as f32;
 
-        // Enforce the additional enchanting caps.
-        if skill == ActorAttribute::Enchanting {
-            cap = cap.min(if IS_USING_CHARGE_CAP.load(Ordering::Relaxed) {
-                SETTINGS.enchant.charge_cap.get() as f32
+    // Enforce the additional enchanting caps.
+    if skill == ActorAttribute::Enchanting {
+        let enchanting_cap =
+            if IS_USING_CHARGE_CAP.load(Ordering::Relaxed) {
+                crate::runtime_settings::get_enchant_charge_cap_override()
+                    .unwrap_or_else(|| {
+                        SETTINGS.enchant.charge_cap.get()
+                    })
             } else {
-                SETTINGS.enchant.magnitude_cap.get() as f32
-            });
-        }
+                crate::runtime_settings::get_enchant_magnitude_cap_override()
+                    .unwrap_or_else(|| {
+                        SETTINGS.enchant.magnitude_cap.get()
+                    })
+            };
+
+        cap = cap.min(enchanting_cap as f32);
+    }
 
         val = val.min(cap).max(0.0);
     }
@@ -869,19 +931,143 @@ extern "system" fn improve_player_skill_points_hook(
     mut exp_base: f32,
     mut exp_offset: f32
 ) -> f32 {
-    assert!(SETTINGS.general.skill_exp_mults_en.get());
+    assert!(
+        SETTINGS.general.skill_exp_mults_en.get()
+    );
 
-    if let Ok(skill) = ActorAttribute::from_raw_skill(attr) {
-        let base_mult = SETTINGS.skill_exp_mults.get(skill).get();
-        let skill_mult = SETTINGS.skill_exp_mults_with_skills.get(skill).get_nearest(
-            PlayerCharacter::get_base(skill) as u32
-        );
-        let pc_mult = SETTINGS.skill_exp_mults_with_pc_lvl.get(skill).get_nearest(
-            PlayerCharacter::get_level()
-        );
+    if let Ok(skill) =
+        ActorAttribute::from_raw_skill(attr)
+    {
+        let skill_slot =
+            skill.skill_slot();
 
-        exp_base   *= base_mult.base   * skill_mult.base   * pc_mult.base;
-        exp_offset *= base_mult.offset * skill_mult.offset * pc_mult.offset;
+        // -------------------------------------------------
+        // General multiplier
+        // -------------------------------------------------
+
+        let ini_base_mult =
+            SETTINGS
+                .skill_exp_mults
+                .get(skill)
+                .get();
+
+        let (
+            base_mult,
+            offset_mult
+        ) =
+            if let Some((
+                base_hundredths,
+                offset_hundredths
+            )) =
+                get_skill_exp_base_override(
+                    skill_slot
+                )
+            {
+                (
+                    base_hundredths as f32 / 100.0,
+                    offset_hundredths as f32 / 100.0,
+                )
+            }
+            else {
+                (
+                    ini_base_mult.base,
+                    ini_base_mult.offset,
+                )
+            };
+
+
+        // -------------------------------------------------
+        // Multiplier by base skill level
+        // -------------------------------------------------
+
+        let skill_level =
+            PlayerCharacter::get_base(skill)
+                as u32;
+
+        let ini_skill_mult =
+            SETTINGS
+                .skill_exp_mults_with_skills
+                .get(skill)
+                .get_nearest(skill_level);
+
+        let (
+            skill_base_mult,
+            skill_offset_mult
+        ) =
+            if let Some((
+                base_hundredths,
+                offset_hundredths
+            )) =
+                get_skill_exp_skill_level_override(
+                    skill_slot,
+                    skill_level
+                )
+            {
+                (
+                    base_hundredths as f32 / 100.0,
+                    offset_hundredths as f32 / 100.0,
+                )
+            }
+            else {
+                (
+                    ini_skill_mult.base,
+                    ini_skill_mult.offset,
+                )
+            };
+
+
+        // -------------------------------------------------
+        // Multiplier by character level
+        // -------------------------------------------------
+
+        let character_level =
+            PlayerCharacter::get_level();
+
+        let ini_pc_mult =
+            SETTINGS
+                .skill_exp_mults_with_pc_lvl
+                .get(skill)
+                .get_nearest(character_level);
+
+        let (
+            pc_base_mult,
+            pc_offset_mult
+        ) =
+            if let Some((
+                base_hundredths,
+                offset_hundredths
+            )) =
+                get_skill_exp_character_level_override(
+                    skill_slot,
+                    character_level
+                )
+            {
+                (
+                    base_hundredths as f32 / 100.0,
+                    offset_hundredths as f32 / 100.0,
+                )
+            }
+            else {
+                (
+                    ini_pc_mult.base,
+                    ini_pc_mult.offset,
+                )
+            };
+
+
+        // -------------------------------------------------
+        // Final XP
+        // -------------------------------------------------
+
+        exp_base *=
+            base_mult *
+            skill_base_mult *
+            pc_base_mult;
+
+        exp_offset *=
+            offset_mult *
+            skill_offset_mult *
+            pc_offset_mult;
     }
 
     exp_base + exp_offset
@@ -892,14 +1078,90 @@ extern "system" fn improve_level_exp_by_skill_level_hook(
     mut exp: f32,
     attr: c_int
 ) -> f32 {
-    assert!(SETTINGS.general.level_exp_mults_en.get());
+    assert!(
+        SETTINGS.general.level_exp_mults_en.get()
+    );
 
-    if let Ok(skill) = ActorAttribute::from_raw_skill(attr) {
-        exp *= SETTINGS.level_exp_mults.get(skill).get()
-             * SETTINGS.level_exp_mults_with_skills.get(skill)
-                       .get_nearest(PlayerCharacter::get_base(skill) as u32)
-             * SETTINGS.level_exp_mults_with_pc_lvl.get(skill)
-                       .get_nearest(PlayerCharacter::get_level());
+    if let Ok(skill) =
+        ActorAttribute::from_raw_skill(attr)
+    {
+        let skill_slot =
+            skill.skill_slot();
+
+
+        // -------------------------------------------------
+        // General multiplier
+        // -------------------------------------------------
+
+        let base_mult =
+            if let Some(multiplier_hundredths) =
+                get_level_exp_base_override(
+                    skill_slot
+                )
+            {
+                multiplier_hundredths as f32 / 100.0
+            }
+            else {
+                SETTINGS
+                    .level_exp_mults
+                    .get(skill)
+                    .get()
+            };
+
+
+        // -------------------------------------------------
+        // Multiplier by base skill level
+        // -------------------------------------------------
+
+        let skill_level =
+            PlayerCharacter::get_base(skill)
+                as u32;
+
+        let skill_level_mult =
+            if let Some(multiplier_hundredths) =
+                get_level_exp_skill_level_override(
+                    skill_slot,
+                    skill_level
+                )
+            {
+                multiplier_hundredths as f32 / 100.0
+            }
+            else {
+                SETTINGS
+                    .level_exp_mults_with_skills
+                    .get(skill)
+                    .get_nearest(skill_level)
+            };
+
+
+        // -------------------------------------------------
+        // Multiplier by character level
+        // -------------------------------------------------
+
+        let character_level =
+            PlayerCharacter::get_level();
+
+        let character_level_mult =
+            if let Some(multiplier_hundredths) =
+                get_level_exp_character_level_override(
+                    skill_slot,
+                    character_level
+                )
+            {
+                multiplier_hundredths as f32 / 100.0
+            }
+            else {
+                SETTINGS
+                    .level_exp_mults_with_pc_lvl
+                    .get(skill)
+                    .get_nearest(character_level)
+            };
+
+
+        exp *=
+            base_mult *
+            skill_level_mult *
+            character_level_mult;
     }
 
     exp * *XP_PER_SKILL_RANK.get()
@@ -914,11 +1176,18 @@ extern "system" fn modify_perk_pool_hook(
     assert!(SETTINGS.general.perk_points_en.get());
 
     let pool = PlayerCharacter::get_perk_pool();
-    let delta = core::cmp::min(
-        0xFF,
-        SETTINGS.perks_at_lvl_up.get_cumulative_delta(PlayerCharacter::get_level())
-    );
-    let res = (pool.get() as i16) + (if count > 0 { delta as i16 } else { count as i16 });
+    let modification = if count > 0 {
+        let player_level = PlayerCharacter::get_level();
+        let delta = get_perks_at_level_up_cumulative_delta(player_level)
+            .unwrap_or_else(|| {
+                SETTINGS.perks_at_lvl_up.get_cumulative_delta(player_level)
+            });
+
+        core::cmp::min(0xFF, delta) as i16
+    } else {
+        count as i16
+    };
+    let res = (pool.get() as i16) + modification;
     pool.set(core::cmp::max(0, core::cmp::min(0xff, res)) as u8);
 }
 

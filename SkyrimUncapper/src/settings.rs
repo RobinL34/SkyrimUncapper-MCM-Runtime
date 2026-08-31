@@ -369,6 +369,24 @@ impl<T: Copy> LeveledIniSection<T> {
     /// Note that only values whose level is less than or equal to the given level
     /// will be considered.
     ///
+
+        /// Returns the number of configured breakpoints.
+    pub fn len(
+        &self,
+    ) -> usize {
+        self.0.len()
+    }
+
+    /// Returns a breakpoint by its sorted index.
+    pub fn get_at(
+        &self,
+        index: usize,
+    ) -> Option<(u32, T)> {
+        self.0
+            .get(index)
+            .map(|entry| (entry.level, entry.item))
+    }
+
     pub fn get_nearest(
         &self,
         level: u32

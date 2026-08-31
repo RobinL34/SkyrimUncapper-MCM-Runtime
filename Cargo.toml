@@ -6,7 +6,7 @@ members = [
     "lib/sre-common",
     "lib/libskyrim",
     "vdb-dump",
-    "SkyrimUncapper"
+    "SkyrimUncapper",
 ]
 
 [profile.release]
@@ -22,6 +22,5 @@ lto = 'fat'
 panic = "abort"
 debug = true
 incremental = false
-# O0 is just impossible to read.
 opt-level = 1
 lto = 'thin'
