@@ -131,12 +131,14 @@ pub extern "system" fn Uncapper_SetSkillCapOverride(
         return false;
     }
 
+    if value == 0 || value > 500 {
+        return false;
+    }
+
     runtime_settings::set_skill_cap_override(
         skill_slot,
         value,
-    );
-
-    true
+    )
 }
 
 #[no_mangle]
@@ -150,12 +152,14 @@ pub extern "system" fn Uncapper_SetFormulaCapOverride(
         return false;
     }
 
+    if value == 0 || value > 500 {
+        return false;
+    }
+
     runtime_settings::set_formula_cap_override(
         skill_slot,
         value,
-    );
-
-    true
+    )
 }
 
 #[no_mangle]
@@ -1291,6 +1295,12 @@ pub extern "system" fn Uncapper_SetPerksAtLevelUpBreakpoint(
     }
 
     if level > MAX_BREAKPOINT_LEVEL {
+        return false;
+    }
+
+    if perk_hundredths >
+        runtime_settings::MAX_PERKS_AT_LEVEL_UP_HUNDREDTHS
+    {
         return false;
     }
 

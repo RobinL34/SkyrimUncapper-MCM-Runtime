@@ -17,6 +17,7 @@ const NO_OVERRIDE: u32 = u32::MAX;
 pub const MAX_SKILL_EXP_BREAKPOINTS: usize = 32;
 pub const MAX_LEVEL_EXP_BREAKPOINTS: usize = 32;
 pub const MAX_PERKS_AT_LEVEL_UP_BREAKPOINTS: usize = 32;
+pub const MAX_PERKS_AT_LEVEL_UP_HUNDREDTHS: u32 = 10_000;
 pub const ATTRIBUTE_TABLE_COUNT: usize = 12;
 pub const MAX_ATTRIBUTE_BREAKPOINTS: usize = 32;
 
@@ -143,6 +144,10 @@ impl RuntimeMultiplierTable {
                     .load(Ordering::Relaxed);
 
             if level > 500 {
+                return false;
+            }
+
+            if index == 0 && level != 0 {
                 return false;
             }
 
@@ -318,6 +323,10 @@ impl RuntimeSimpleMultiplierTable {
                 return false;
             }
 
+            if index == 0 && level != 0 {
+                return false;
+            }
+
             if multiplier > 10_000 {
                 return false;
             }
@@ -441,7 +450,9 @@ impl RuntimePerksAtLevelUpTable {
         level: u32,
         perk_hundredths: u32,
     ) -> bool {
-        if index >= MAX_PERKS_AT_LEVEL_UP_BREAKPOINTS {
+        if index >= MAX_PERKS_AT_LEVEL_UP_BREAKPOINTS ||
+            perk_hundredths > MAX_PERKS_AT_LEVEL_UP_HUNDREDTHS
+        {
             return false;
         }
 
@@ -476,7 +487,15 @@ impl RuntimePerksAtLevelUpTable {
                 self.levels[index]
                     .load(Ordering::Relaxed);
 
+            let perk_hundredths =
+                self.perk_hundredths[index]
+                    .load(Ordering::Relaxed);
+
             if level > 500 {
+                return false;
+            }
+
+            if perk_hundredths > MAX_PERKS_AT_LEVEL_UP_HUNDREDTHS {
                 return false;
             }
 
@@ -1013,9 +1032,15 @@ pub fn get_skill_cap_override(
 pub fn set_skill_cap_override(
     skill_slot: usize,
     value: u32,
-) {
+) -> bool {
+    if value == 0 || value > 500 {
+        return false;
+    }
+
     SKILL_CAP_OVERRIDES[skill_slot]
         .store(value, Ordering::Relaxed);
+
+    true
 }
 
 
@@ -1041,9 +1066,15 @@ pub fn get_formula_cap_override(
 pub fn set_formula_cap_override(
     skill_slot: usize,
     value: u32,
-) {
+) -> bool {
+    if value == 0 || value > 500 {
+        return false;
+    }
+
     FORMULA_CAP_OVERRIDES[skill_slot]
         .store(value, Ordering::Relaxed);
+
+    true
 }
 
 
