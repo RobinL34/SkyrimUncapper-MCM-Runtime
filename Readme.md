@@ -70,7 +70,7 @@ This project is based on **Skyrim Skill Uncapper SE/AE**.
 
 ### Original Rust implementation
 
-- Andrew Spaulding (TheDreadedAndy)
+- Andrew Spaulding (Kasplat / TheDreadedAndy)
 
 ### Previous Skyrim Uncapper projects
 
