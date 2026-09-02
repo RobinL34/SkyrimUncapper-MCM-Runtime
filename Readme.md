@@ -1,14 +1,14 @@
 # SkyrimUncapper MCM Runtime
 
-Modified runtime version of **Skyrim Skill Uncapper SE/AE** used by **Uncapper MCM** to provide per-save runtime configuration through an in-game SkyUI MCM.
+An **unofficial modified fork of Skyrim Skill Uncapper SE/AE**, providing the runtime API required by **Uncapper MCM** for per-save configuration through an in-game SkyUI MCM.
 
-This is not the original Skyrim Skill Uncapper repository.
+This project is not an official update of Skyrim Skill Uncapper SE/AE and is not affiliated with the original author.
 
 ## Features
 
 This runtime adds support for per-save MCM overrides while keeping `SkyrimUncapper.ini` as the baseline configuration.
 
-When runtime overrides are disabled or cleared, Skyrim Skill Uncapper immediately falls back to the values loaded from `SkyrimUncapper.ini`.
+When runtime overrides are disabled or cleared, Skyrim Skill Uncapper falls back to the values loaded from `SkyrimUncapper.ini`.
 
 Current runtime overrides include:
 
@@ -50,29 +50,35 @@ Legendary runtime configuration supports:
 
 The original Skyrim Skill Uncapper compatibility constraints for Legendary settings, including the known Custom Skills Framework conflict, remain unchanged.
 
+## Requirements
+
+This runtime is designed to be used with **Uncapper MCM**.
+
+SKSE is required, as with the original Skyrim Skill Uncapper SE/AE.
+
 ## Compatibility
 
-This runtime is intended to be used together with **Uncapper MCM**.
+The current runtime has been developed and tested on Skyrim AE `1.6.1170`.
 
 It preserves the original Skyrim Skill Uncapper behavior whenever no runtime override is active.
 
-The current runtime is developed and tested for Skyrim AE `1.6.1170`.
+Other Skyrim versions have not currently been validated with this fork.
 
 ## Credits
 
 This project is based on **Skyrim Skill Uncapper SE/AE**.
 
-Original Rust implementation:
+### Original Rust implementation
 
 - Andrew Spaulding (TheDreadedAndy)
 
-Previous Skyrim Uncapper projects:
+### Previous Skyrim Uncapper projects
 
 - Kassent — Skyrim Uncapper SE
 - Vadfromnu — SE/AE update of Kassent's implementation
 - Elys — original Skyrim LE Uncapper
 
-MCM runtime override integration:
+### MCM runtime override integration
 
 - Robin
 
@@ -93,5 +99,7 @@ This project contains modified code from Skyrim Skill Uncapper SE/AE.
 Original code:
 
 Copyright 2023 Andrew Spaulding
+
+The original copyright notice and BSD 2-Clause license are retained.
 
 See `LICENSE.txt` for the full license text.
